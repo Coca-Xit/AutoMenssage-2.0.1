@@ -223,3 +223,6 @@ cron.schedule('* * * * *', async () => {
 
 bot.login(process.env.TOKEN);
 selfbot.login(process.env.SELFBOT_TOKEN);
+
+
+//version 2.0.1
