@@ -29,8 +29,8 @@ Este bot é uma solução para configurar o envio automático de mensagens em ca
 Clone este repositório para sua máquina local.
 
 ```bash
-git clone https://github.com/seu-usuario/nome-do-repositorio.git
-cd nome-do-repositorio
+git clone https://github.com/Coca-Xit/AutoMenssage-2.0.1.git
+cd AutoMenssage-2.0.1
 
 ```
 ### Passo 2: Instale as Dependências
