@@ -129,7 +129,7 @@ bot.on('interactionCreate', async (interaction) => {
             const modal = new ModalBuilder()
                 .setCustomId('modal_editar')
                 .setTitle('Editar Mensagem')
-                .addComponents(
+                .addComponents(a
                     new ActionRowBuilder().addComponents(
                         new TextInputBuilder()
                             .setCustomId('id')
