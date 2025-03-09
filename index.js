@@ -20,13 +20,17 @@ function saveDB(data) {
     fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
 }
 
+// Função para gerar um ID único
+function generateId(db) {
+    return db.length > 0 ? (Math.max(...db.map(entry => Number(entry.id))) + 1).toString() : "1";
+}
+
 bot.once('ready', async () => {
     console.log(`Bot logado como ${bot.user.tag}`);
     
     // Registrar comandos
     const commands = [
         new SlashCommandBuilder().setName('configurar_mensagens').setDescription('Configura o envio automático de mensagens'),
-        // Adicione mais comandos conforme necessário
     ].map(command => command.toJSON());
 
     try {
@@ -60,7 +64,7 @@ bot.on('interactionCreate', async (interaction) => {
 });
 
 bot.on('interactionCreate', async (interaction) => {
-    if (!interaction.isSelectMenu()) return;
+    if (!interaction.isStringSelectMenu()) return;
 
     if (interaction.customId === 'menu_configuracao') {
         if (interaction.values[0] === 'cadastrar') {
@@ -96,12 +100,9 @@ bot.on('interactionCreate', async (interaction) => {
             await interaction.showModal(modal);
         } else if (interaction.values[0] === 'editar') {
             const db = loadDB();
-            const options = await Promise.all(db.map(async entry => {
-                const guild = await bot.guilds.fetch(entry.serverId).catch(() => null);
-                return {
-                    label: `Mensagem de ${guild ? guild.name : entry.serverId} - ${entry.channelId}`,
-                    value: entry.serverId
-                };
+            const options = db.map(entry => ({
+                label: `ID ${entry.id} - ${entry.serverId || 'Não definido'}`,
+                value: entry.id || 'sem_id'
             }));
 
             const row = new ActionRowBuilder().addComponents(
@@ -117,19 +118,25 @@ bot.on('interactionCreate', async (interaction) => {
 });
 
 bot.on('interactionCreate', async (interaction) => {
-    if (!interaction.isSelectMenu()) return;
+    if (!interaction.isStringSelectMenu()) return;
 
     if (interaction.customId === 'select_message') {
-        const selectedServerId = interaction.values[0];
+        const selectedId = interaction.values[0];
         const db = loadDB();
-        const messageData = db.find(entry => entry.serverId === selectedServerId);
+        const messageData = db.find(entry => entry.id === selectedId);
 
         if (messageData) {
-            const guild = await bot.guilds.fetch(messageData.serverId).catch(() => null);
             const modal = new ModalBuilder()
                 .setCustomId('modal_editar')
                 .setTitle('Editar Mensagem')
                 .addComponents(
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('id')
+                            .setLabel('ID de Cadastro')
+                            .setStyle(TextInputStyle.Short)
+                            .setValue(messageData.id)
+                    ),
                     new ActionRowBuilder().addComponents(
                         new TextInputBuilder()
                             .setCustomId('server_id')
@@ -170,27 +177,32 @@ bot.on('interactionCreate', async (interaction) => {
     if (!interaction.isModalSubmit()) return;
 
     if (interaction.customId === 'modal_cadastrar') {
-        const serverId = interaction.fields.getTextInputValue('server_id');
-        const channelId = interaction.fields.getTextInputValue('channel_id');
-        const messageText = interaction.fields.getTextInputValue('message_text');
-        const scheduleTime = interaction.fields.getTextInputValue('schedule_time');
-
         const db = loadDB();
-        db.push({ serverId, channelId, messageText, scheduleTime });
+        const id = generateId(db);
+        const newEntry = {
+            id,
+            serverId: interaction.fields.getTextInputValue('server_id'),
+            channelId: interaction.fields.getTextInputValue('channel_id'),
+            messageText: interaction.fields.getTextInputValue('message_text'),
+            scheduleTime: interaction.fields.getTextInputValue('schedule_time')
+        };
+        db.push(newEntry);
         saveDB(db);
 
         await interaction.reply({ content: 'Mensagem cadastrada com sucesso!', ephemeral: true });
     } else if (interaction.customId === 'modal_editar') {
-        const serverId = interaction.fields.getTextInputValue('server_id');
-        const channelId = interaction.fields.getTextInputValue('channel_id');
-        const messageText = interaction.fields.getTextInputValue('message_text');
-        const scheduleTime = interaction.fields.getTextInputValue('schedule_time');
-
         const db = loadDB();
-        const index = db.findIndex(entry => entry.serverId === serverId);
+        const id = interaction.fields.getTextInputValue('id');
+        const index = db.findIndex(entry => entry.id === id);
         
         if (index !== -1) {
-            db[index] = { serverId, channelId, messageText, scheduleTime };
+            db[index] = {
+                id,
+                serverId: interaction.fields.getTextInputValue('server_id'),
+                channelId: interaction.fields.getTextInputValue('channel_id'),
+                messageText: interaction.fields.getTextInputValue('message_text'),
+                scheduleTime: interaction.fields.getTextInputValue('schedule_time')
+            };
             saveDB(db);
             await interaction.reply({ content: 'Mensagem editada com sucesso!', ephemeral: true });
         } else {
@@ -223,4 +235,3 @@ cron.schedule('* * * * *', async () => {
 
 bot.login(process.env.TOKEN);
 selfbot.login(process.env.SELFBOT_TOKEN);
-
