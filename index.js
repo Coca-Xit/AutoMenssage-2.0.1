@@ -56,7 +56,8 @@ bot.on('interactionCreate', async (interaction) => {
                 .addOptions([
                     { label: 'Cadastrar Mensagem', value: 'cadastrar' },
                     { label: 'Editar Mensagem', value: 'editar' },
-                    { label: 'Enviar Mensagem', value: 'enviar' }
+                    { label: 'Deletar Mensagem', value: 'deletar' },
+                    { label: 'Enviar Mensagem Agora', value: 'enviar' }
                 ])
         );
         await interaction.reply({ content: 'Selecione uma opção:', components: [row], ephemeral: true });
@@ -169,6 +170,188 @@ bot.on('interactionCreate', async (interaction) => {
             await interaction.showModal(modal);
         } else {
             await interaction.reply({ content: 'Mensagem não encontrada.', ephemeral: true });
+        }
+    }
+});
+
+bot.on('interactionCreate', async (interaction) => {
+    if (!interaction.isStringSelectMenu()) return;
+
+    if (interaction.customId === 'menu_configuracao') {
+        if (interaction.values[0] === 'deletar') {
+            const db = loadDB();
+            const options = db.map(entry => ({
+                label: `ID ${entry.id} - ${entry.serverId || 'Não definido'}`,
+                value: entry.id || 'sem_id'
+            }));
+
+            const row = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('select_message_deletar')
+                    .setPlaceholder('Selecione a mensagem para deletar')
+                    .addOptions(options)
+            );
+
+            await interaction.reply({ content: 'Escolha uma mensagem para deletar:', components: [row], ephemeral: true });
+        }
+    }
+});
+
+bot.on('interactionCreate', async (interaction) => {
+    if (!interaction.isStringSelectMenu()) return;
+
+    if (interaction.customId === 'select_message_deletar') {
+        const selectedId = interaction.values[0];
+        const db = loadDB();
+        const messageIndex = db.findIndex(entry => entry.id === selectedId);
+
+        if (messageIndex !== -1) {
+            // Deletar a mensagem da DB
+            db.splice(messageIndex, 1);
+            saveDB(db);
+
+            await interaction.reply({ content: `Mensagem com ID ${selectedId} deletada com sucesso!`, ephemeral: true });
+        } else {
+            await interaction.reply({ content: 'Mensagem não encontrada.', ephemeral: true });
+        }
+    }
+});
+
+
+bot.on('interactionCreate', async (interaction) => {
+    if (!interaction.isStringSelectMenu()) return;
+
+    if (interaction.customId === 'menu_configuracao') {
+        if (interaction.values[0] === 'enviar') {
+            const db = loadDB();
+            const options = db.map(entry => ({
+                label: `ID ${entry.serverId || 'Não definido'}`,
+                value: entry.serverId || 'sem_id'
+            }));
+
+            const row = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('select_servers')
+                    .setPlaceholder('Escolha um ou mais servidores')
+                    .addOptions(options)
+                    .setMinValues(1) // Permite selecionar no mínimo um servidor
+                    .setMaxValues(options.length) // Permite selecionar até todos os servidores
+            );
+
+            await interaction.reply({ content: 'Escolha os servidores para enviar a mensagem:', components: [row], ephemeral: true });
+        }
+    }
+});
+
+bot.on('interactionCreate', async (interaction) => {
+    if (!interaction.isStringSelectMenu()) return;
+
+    if (interaction.customId === 'select_servers') {
+        const selectedServers = interaction.values; // Servidores selecionados pelo usuário
+
+        // Pedir para o usuário digitar a mensagem que deseja enviar
+        await interaction.reply({
+            content: 'Por favor, envie a mensagem que deseja enviar para os servidores selecionados:',
+            ephemeral: true
+        });
+
+        // Criar um filtro para capturar a mensagem do usuário
+        const filter = m => m.author.id === interaction.user.id;
+        const collector = interaction.channel.createMessageCollector({ filter, time: 15000 });
+
+        collector.on('collect', async (message) => {
+            const userMessage = message.content.trim(); // Remover espaços em branco no início e fim
+
+            // Verificar se a mensagem não está vazia
+            if (!userMessage) {
+                await interaction.followUp({ content: 'A mensagem não pode estar vazia. Tente novamente.', ephemeral: true });
+                return; // Não vamos parar o coletor aqui, permitindo que o usuário tente novamente
+            }
+
+            // Enviar a mensagem para os servidores escolhidos
+            for (const serverId of selectedServers) {
+                try {
+                    const guild = await selfbot.guilds.fetch(serverId); // Buscar o servidor pelo ID
+                    const channel = guild.channels.cache.find(c => c.isText()); // Procurar o primeiro canal de texto
+
+                    if (channel) {
+                        await channel.send(userMessage); // Enviar a mensagem para o canal de texto encontrado
+                    } else {
+                        await interaction.followUp({ content: `Nenhum canal de texto encontrado no servidor ${serverId}.`, ephemeral: true });
+                    }
+                } catch (error) {
+                    console.error(`Erro ao enviar mensagem para o servidor ${serverId}: ${error.message}`);
+                    await interaction.followUp({ content: `Erro ao enviar mensagem para o servidor ${serverId}: ${error.message}`, ephemeral: true });
+                }
+            }
+
+            // Confirmação de envio
+            await interaction.followUp({ content: 'Mensagem enviada com sucesso para os servidores selecionados!', ephemeral: true });
+
+            collector.stop(); // Parar o coletor após a primeira mensagem ser recebida
+        });
+
+        collector.on('end', collected => {
+            if (collected.size === 0) {
+                interaction.followUp({ content: 'Tempo esgotado! Nenhuma mensagem foi recebida.', ephemeral: true });
+            }
+        });
+    }
+});
+
+bot.on('interactionCreate', async (interaction) => {
+    if (!interaction.isStringSelectMenu()) return;
+
+    if (interaction.customId === 'select_message') {
+        const selectedMessageId = interaction.values[0];
+        const db = loadDB();
+        const messageData = db.find(entry => entry.id === selectedMessageId);
+
+        if (messageData) {
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('confirm_send_message')
+                    .setLabel('Enviar Mensagem')
+                    .setStyle('PRIMARY')
+            );
+
+            await interaction.reply({
+                content: `Você selecionou a mensagem com ID ${selectedMessageId}. Deseja enviar essa mensagem para os servidores escolhidos?`,
+                components: [row],
+                ephemeral: true
+            });
+        } else {
+            await interaction.reply({ content: 'Mensagem não encontrada.', ephemeral: true });
+        }
+    }
+});
+
+bot.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+
+    if (interaction.customId === 'confirm_send_message') {
+        const selectedMessageId = interaction.message.content.match(/ID (\d+)/)[1]; // Pega o ID da mensagem
+        const db = loadDB();
+        const messageData = db.find(entry => entry.id === selectedMessageId);
+
+        if (messageData) {
+            // Enviar a mensagem para todos os servidores selecionados
+            const selectedServers = interaction.message.content.match(/ID (\d+)/)[1]; // Servidores selecionados
+            for (const serverId of selectedServers) {
+                try {
+                    const channel = await selfbot.channels.fetch(messageData.channelId).catch(() => null);
+                    if (channel) {
+                        await channel.send(messageData.messageText);
+                        await interaction.reply({ content: `Mensagem enviada com sucesso para o canal ${messageData.channelId}`, ephemeral: true });
+                    } else {
+                        await interaction.reply({ content: `Canal não encontrado para enviar a mensagem no servidor ${serverId}.`, ephemeral: true });
+                    }
+                } catch (error) {
+                    await interaction.reply({ content: `Erro ao enviar mensagem para o servidor ${serverId}: ${error.message}`, ephemeral: true });
+                }
+            }
+        } else {
+            await interaction.reply({ content: 'Mensagem não encontrada para enviar.', ephemeral: true });
         }
     }
 });
